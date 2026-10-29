@@ -10,6 +10,7 @@ Each skill is a spell: a folder with a `SKILL.md` (when to use it and how), plus
 |---|-------|--------------|
 | 1 | [`hermes-railway-savings`](skills/hermes-railway-savings) | Run Hermes on Railway on a diet: RAM, disk and routine tokens. Ships with a memory watcher and a daily scratch cleanup. |
 | 2 | [`nightly-dream`](skills/nightly-dream) | A nightly routine where the agent rereads the day, turns your corrections into skill rules and writes a diary. |
+| 3 | [`whatsapp-web`](skills/whatsapp-web) | Your agent reads and sends on your own WhatsApp (text, images, reply watchers), always with your approval. |
 
 ## Install a skill
 
@@ -26,6 +27,7 @@ Or one at a time, from any Hermes:
 ```bash
 hermes skills install silviomoreto/hermes-grimoire/skills/nightly-dream
 hermes skills install silviomoreto/hermes-grimoire/skills/hermes-railway-savings
+hermes skills install silviomoreto/hermes-grimoire/skills/whatsapp-web
 ```
 
 Hermes runs its security scan before installing (these show up as `community` trust). Preview first with `hermes skills inspect <same identifier>`.
