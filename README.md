@@ -13,7 +13,16 @@ Each skill is a spell: a folder with a `SKILL.md` (when to use it and how), plus
 
 ## Install a skill
 
-On your Hermes server:
+One command, from any Hermes:
+
+```bash
+hermes skills install silviomoreto/hermes-grimoire/skills/nightly-dream
+hermes skills install silviomoreto/hermes-grimoire/skills/hermes-railway-savings
+```
+
+Hermes runs its security scan before installing (these show up as `community` trust). Preview first with `hermes skills inspect <same identifier>`.
+
+Or copy it by hand:
 
 ```bash
 git clone https://github.com/silviomoreto/hermes-grimoire.git /tmp/hermes-grimoire
