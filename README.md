@@ -1,5 +1,7 @@
 # hermes-grimoire 🌙
 
+[![skills.sh](https://skills.sh/b/silviomoreto/hermes-grimoire)](https://skills.sh/silviomoreto/hermes-grimoire) [![License: MIT](https://img.shields.io/badge/license-MIT-black.svg)](LICENSE)
+
 A spell book for [Hermes Agent](https://hermes-agent.nousresearch.com/docs): **skills battle-tested on a real, always-on Hermes**, ready to drop into yours.
 
 Each skill is a spell: a folder with a `SKILL.md` (when to use it and how), plus optional `scripts/` and `references/`.
@@ -50,3 +52,7 @@ Then read its `SKILL.md`: each skill says what to adjust (paths, ports, cron).
 5. **Tested for real.** Say in the PR where it ran and what you checked.
 
 Before opening a PR: `grep -rniE "token|password|secret|@gmail" skills/<name>`.
+
+## License
+
+[MIT](LICENSE). Use, fork and remix freely.
