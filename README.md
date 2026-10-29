@@ -13,7 +13,15 @@ Each skill is a spell: a folder with a `SKILL.md` (when to use it and how), plus
 
 ## Install a skill
 
-One command, from any Hermes:
+All spells at once:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/silviomoreto/hermes-grimoire/main/install.sh | bash
+```
+
+It lists the folders in `skills/` and runs `hermes skills install` on each one, so new spells come along automatically. Target another profile with `HERMES_HOME=...`.
+
+Or one at a time, from any Hermes:
 
 ```bash
 hermes skills install silviomoreto/hermes-grimoire/skills/nightly-dream
