@@ -10,21 +10,30 @@ Each skill is a spell: a folder with a `SKILL.md` (when to use it and how), plus
 
 | # | Skill | What it does |
 |---|-------|--------------|
+| 0 | [`grimoire`](skills/grimoire) | The book itself: installs every spell, tells you what's new and updates them. Start here. |
 | 1 | [`hermes-railway-savings`](skills/hermes-railway-savings) | Run Hermes on Railway on a diet: RAM, disk and routine tokens. Ships with a memory watcher and a daily scratch cleanup. |
 | 2 | [`nightly-dream`](skills/nightly-dream) | A nightly routine where the agent rereads the day, turns your corrections into skill rules and writes a diary. |
 | 3 | [`whatsapp-web`](skills/whatsapp-web) | Your agent reads and sends on your own WhatsApp (text, images, reply watchers), always with your approval. |
 
-## Install a skill
+## Install
 
-All spells at once:
+**The whole grimoire, the easy way.** Install the `grimoire` skill, then just ask your agent:
+
+```bash
+hermes skills install silviomoreto/hermes-grimoire/skills/grimoire
+```
+
+> "Install the whole grimoire" · "Any new spells?" · "Update the grimoire"
+
+The agent installs what is missing, updates what you have, and asks before setting up crons or logins.
+
+**Or from the terminal, in one line:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/silviomoreto/hermes-grimoire/main/install.sh | bash
 ```
 
-It lists the folders in `skills/` and runs `hermes skills install` on each one, so new spells come along automatically. Target another profile with `HERMES_HOME=...`.
-
-Or one at a time, from any Hermes:
+**Or one spell at a time:**
 
 ```bash
 hermes skills install silviomoreto/hermes-grimoire/skills/nightly-dream
@@ -32,16 +41,9 @@ hermes skills install silviomoreto/hermes-grimoire/skills/hermes-railway-savings
 hermes skills install silviomoreto/hermes-grimoire/skills/whatsapp-web
 ```
 
-Hermes runs its security scan before installing (these show up as `community` trust). Preview first with `hermes skills inspect <same identifier>`.
+Every path goes through `hermes skills install`, so Hermes runs its security scan on each spell (they show up as `community` trust). Preview first with `hermes skills inspect <same identifier>`. Target another profile with `HERMES_HOME=...`.
 
-Or copy it by hand:
-
-```bash
-git clone https://github.com/silviomoreto/hermes-grimoire.git /tmp/hermes-grimoire
-cp -r /tmp/hermes-grimoire/skills/<name> "$HERMES_HOME/skills/<category>/"
-```
-
-Then read its `SKILL.md`: each skill says what to adjust (paths, ports, cron).
+Then read each spell's `SKILL.md`: it says what to adjust (paths, ports, cron).
 
 ## Contribute a spell
 
