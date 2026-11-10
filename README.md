@@ -14,6 +14,7 @@ Each skill is a spell: a folder with a `SKILL.md` (when to use it and how), plus
 | 1 | [`hermes-railway-savings`](skills/hermes-railway-savings) | Run Hermes on Railway on a diet: RAM, disk and routine tokens. Ships with a memory watcher and a daily scratch cleanup. |
 | 2 | [`nightly-dream`](skills/nightly-dream) | A nightly routine where the agent rereads the day, turns your corrections into skill rules and writes a diary. |
 | 3 | [`whatsapp-web`](skills/whatsapp-web) | Your agent reads and sends on your own WhatsApp (text, images, reply watchers), always with your approval. |
+| 4 | [`web-form-filling`](skills/web-form-filling) | Fill forms on Angular/React sites through the browser: vault login, dropdowns, autocompletes, bulk imports, read-back before saving. |
 
 ## Install
 
@@ -39,6 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/silviomoreto/hermes-grimoire/main/i
 hermes skills install silviomoreto/hermes-grimoire/skills/nightly-dream
 hermes skills install silviomoreto/hermes-grimoire/skills/hermes-railway-savings
 hermes skills install silviomoreto/hermes-grimoire/skills/whatsapp-web
+hermes skills install silviomoreto/hermes-grimoire/skills/web-form-filling
 ```
 
 Every path goes through `hermes skills install`, so Hermes runs its security scan on each spell (they show up as `community` trust). Preview first with `hermes skills inspect <same identifier>`. Target another profile with `HERMES_HOME=...`.
