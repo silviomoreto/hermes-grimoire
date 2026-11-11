@@ -276,7 +276,8 @@ def cmd_start(args):
         navigate_first_page(port, args.url)
 
     now = time.time()
-    st = {"cdp": port, "token": secrets.token_urlsafe(32), "sid": None, "claimed": False, "done": False,
+    st = {"cdp": port, "token": secrets.token_urlsafe(32), "sid": None, "gen": secrets.token_hex(8),
+          "claimed": False, "done": False,
           "created_at": now, "open_deadline": now + args.open_minutes * 60,
           "hard_deadline": now + args.minutes * 60, "ended_at": None, "reason": None, "last_url": args.url,
           "listen_port": LISTEN_PORT}
@@ -333,21 +334,21 @@ body{margin:0;background:#0b0b0f;color:#ddd;font:14px system-ui,sans-serif;overf
 #kbd{width:100%;box-sizing:border-box;background:#0b0b0f;color:#eee;border:1px solid #4b2a6b;border-radius:6px;padding:8px;font-size:16px;display:none}
 #wrap{flex:1;overflow:hidden;display:flex;justify-content:center;align-items:flex-start;background:#000}
 #screen{max-width:100%;max-height:100%;touch-action:none;user-select:none;-webkit-user-select:none;cursor:default}
-#msg{position:fixed;bottom:8px;left:8px;right:8px;text-align:center;color:#bbb;font-size:12px;pointer-events:none}
+#msg{position:fixed;bottom:84px;left:8px;right:8px;text-align:center;color:#bbb;font-size:12px;pointer-events:none}
 #tabs{position:fixed;top:48px;left:6px;right:6px;background:#141419;border:1px solid #333;border-radius:8px;display:none;max-height:60vh;overflow:auto;z-index:5}
 #tabs div{padding:10px;border-bottom:1px solid #222}
-#done{background:#1e5b3a!important}
+#done{position:fixed;right:14px;bottom:18px;z-index:10;background:#1e7a4a;color:#fff;border:0;border-radius:28px;padding:14px 22px;font-size:18px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.6)}
 </style></head><body>
 <div id="bar">
 <button id="back">←</button><button id="reload">⟳</button>
 <input id="url" autocapitalize="off" autocorrect="off" spellcheck="false">
 <button id="tabsb">▤</button><button id="kb">⌨️</button><button id="drag">✋</button><button id="mob">📱</button>
-<button id="done"></button>
 <input id="kbd" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
 </div>
 <div id="tabs"></div>
 <div id="wrap"><img id="screen" draggable="false" alt=""></div>
 <div id="msg"></div>
+<button id="done"></button>
 <script>
 const T=__TEXT__;
 const $=id=>document.getElementById(id);const img=$('screen'),msg=$('msg');
@@ -357,7 +358,7 @@ msg.textContent=T.connecting;
 let ws,meta={deviceWidth:1280,deviceHeight:900,offsetTop:0},drag=false,mobile=false,ended=false;
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
 function connect(){
- ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+ ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws?g='+__GEN__);
  ws.onopen=()=>{msg.textContent=''};
  ws.onmessage=e=>{const d=JSON.parse(e.data);
   if(d.type==='frame'){img.src='data:image/jpeg;base64,'+d.data;if(d.meta)meta=d.meta}
@@ -540,7 +541,7 @@ def serve():
     async def index(request):
         if not authed(request):
             return web.Response(status=403, text=TEXT["no_session"])
-        return web.Response(text=page, content_type="text/html", headers={
+        return web.Response(text=page.replace("__GEN__", json.dumps(load_state().get("gen", ""))), content_type="text/html", headers={
             "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY"})
 
     async def pages(http):
@@ -555,6 +556,11 @@ def serve():
             return web.Response(status=403)
         client = web.WebSocketResponse(heartbeat=20, max_msg_size=8 * 1024 * 1024)
         await client.prepare(request)
+        if request.query.get("g") != load_state().get("gen"):
+            # A viewer tab left open from an older session shares the cookie jar: it must not take over.
+            await client.send_json({"type": "end", "text": TEXT["ended"]})
+            await client.close()
+            return client
         old = app_state["client"]
         if old is not None and not old.closed:
             try:  # the older window stops reconnecting instead of fighting over the session
