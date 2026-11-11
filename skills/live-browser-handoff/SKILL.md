@@ -41,7 +41,7 @@ Your agent hits a captcha, an SMS or app 2FA prompt, or a password it must not k
    - `LIVE_BROWSER_DENY_PORTS=9333`: Chromes that can never be shared, for example a messaging app.
    - `LIVE_BROWSER_STATE_DIR` and `LIVE_BROWSER_PROFILE_DIR`: defaults under `$HERMES_HOME/live-browser`.
    - `TZ`: time zone of the times in the link message.
-4. **One-tap command (recommended).** Add a quick command, so the link arrives even while the agent is busy. It needs a gateway restart.
+4. **One-tap command (recommended).** Add a quick command, so the link arrives even while the agent is busy. Then **restart the gateway**: it reads `config.yaml` only at startup, and until then `/browser` answers "Unknown command".
    ```yaml
    quick_commands:
      browser:
