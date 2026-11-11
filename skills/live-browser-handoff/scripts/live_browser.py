@@ -33,7 +33,8 @@ Settings come from environment variables, optionally from a `live_browser.env` f
   TZ                          time zone of the times printed in the link message (e.g. Europe/Lisbon)
 
 Security model: the link carries a 32-byte random token that works once and only for
---open-minutes; opening it swaps the token for an HttpOnly, Secure, SameSite=Strict cookie.
+--open-minutes. Opening the link only shows a button (chat apps fetch links to build previews);
+tapping it spends the token and swaps it for an HttpOnly, Secure, SameSite=Strict cookie.
 Sessions end after --minutes, after 10 idle minutes, or when Done is pressed; then the
 server exits. Keystrokes and tokens are never logged.
 """
@@ -95,6 +96,7 @@ TEXT = {
     "expired": "link expired", "maxtime": "maximum session time reached", "idle": "session ended for inactivity",
     "bad_link": "Invalid, expired or already used link. Ask the agent for a new one.",
     "no_session": "No session. Ask the agent for a new link.",
+    "open": "Open the live browser", "open_hint": "Tap to take control. This link works once.",
     "msg": "🖥️ Live browser\n{link}\n\nOpen by {open_by} · works once · ends by {ends_by}.\nWhen finished, tap ✅ Done.",
     "r_done": "finished by the user", "r_unopened": "link expired unopened", "r_max": "max time",
     "r_idle": "idle", "r_stopped": "stopped by the agent", "r_replaced": "replaced by a new session",
@@ -503,15 +505,35 @@ def serve():
     async def health(request):
         return web.Response(text="ok")
 
+    def token_ok(cur, tok):
+        return not (cur.get("ended_at") or cur.get("claimed") or time.time() > cur["open_deadline"]
+                    or not secrets.compare_digest(tok, cur.get("token", "")))
+
+    async def claim_page(request):
+        # Chat apps (Telegram, Slack, WhatsApp) fetch links with GET to build previews. A GET that
+        # consumed the token would burn it before the human taps, so GET only shows a button and
+        # the token is spent by the POST that button sends.
+        if not token_ok(load_state(), request.match_info["token"]):
+            return web.Response(status=403, text=TEXT["bad_link"])
+        html = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+                '<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">'
+                f'<title>{TEXT["title"]}</title></head>'
+                '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;'
+                'background:#0b0b0f;color:#ddd;font:16px system-ui,sans-serif;text-align:center">'
+                '<form method="post"><button style="font-size:20px;padding:16px 28px;border-radius:10px;'
+                'border:1px solid #4b2a6b;background:#22222b;color:#eee">' + TEXT["open"] + '</button>'
+                '<p style="color:#999">' + TEXT["open_hint"] + '</p></form></body></html>')
+        return web.Response(text=html, content_type="text/html", headers={
+            "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY"})
+
     async def claim(request):
         cur = load_state()
-        tok = request.match_info["token"]
-        if cur.get("ended_at") or cur.get("claimed") or time.time() > cur["open_deadline"] or not secrets.compare_digest(tok, cur.get("token", "")):
+        if not token_ok(cur, request.match_info["token"]):
             return web.Response(status=403, text=TEXT["bad_link"])
         sid = secrets.token_urlsafe(32)
         persist(claimed=True, sid=sid, claimed_at=time.time(), token="")
         app_state["last_seen"] = time.time()
-        resp = web.HTTPFound("/")
+        resp = web.HTTPSeeOther("/")
         resp.set_cookie("lb_sid", sid, httponly=True, secure=True, samesite="Strict", max_age=4 * 3600)
         raise resp
 
@@ -708,7 +730,8 @@ def serve():
 
     app = web.Application()
     app.router.add_get("/health", health)
-    app.router.add_get("/s/{token}", claim)
+    app.router.add_get("/s/{token}", claim_page)
+    app.router.add_post("/s/{token}", claim)
     app.router.add_get("/", index)
     app.router.add_get("/ws", ws_handler)
 

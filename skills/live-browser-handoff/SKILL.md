@@ -27,7 +27,7 @@ Your agent hits a captcha, an SMS or app 2FA prompt, or a password it must not k
   - ✅ Done ends the session.
 - Security:
   - the link carries a 32-byte random token that works **once** and only for 10 minutes;
-  - opening it swaps the token for an HttpOnly, Secure, SameSite=Strict cookie;
+  - opening the link shows only an "Open" button; tapping it spends the token and swaps it for an HttpOnly, Secure, SameSite=Strict cookie;
   - a session lasts at most 30 minutes and ends after 10 idle minutes; then the server exits;
   - keystrokes and tokens are never logged.
 
@@ -67,6 +67,7 @@ Flow for a blocked task:
 ## Pitfalls
 - **`/browser` is also a built-in Hermes command, but CLI-only.** In Telegram/Slack the quick command wins, since the built-in is not a gateway command. Pick another name if you use the CLI chat.
 - **Prefer a stable public URL over a throwaway tunnel hostname.** A freshly created random hostname took minutes to resolve in testing, and probing it too early made the resolver cache NXDOMAIN.
+- **Never spend the token on a GET.** Telegram fetched the link for its preview one second after it was sent and burned the one-time token, so the user got "already used". GET now shows a button and the token is spent by its POST; previews never POST.
 - **Two windows with the same cookie** used to kick each other off every couple of seconds. A new window now takes over, and the old one shows "session opened in another window" and stops reconnecting.
 - **Do not enable `Emulation.setTouchEmulationEnabled`** for the phone layout: it swallowed the viewer's mouse events. Device metrics alone are enough.
 - **The default headless user agent** (`HeadlessChrome`) is flagged by many login pages. The script launches Chrome with a regular desktop user agent for its own version.
