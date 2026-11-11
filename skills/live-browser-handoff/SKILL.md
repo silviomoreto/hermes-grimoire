@@ -37,7 +37,6 @@ Your agent hits a captcha, an SMS or app 2FA prompt, or a password it must not k
    - **Railway:** nothing to set. It uses `RAILWAY_PUBLIC_DOMAIN` and `$PORT`/8080, the port the service domain routes to. Check first that nothing else listens there: `curl -s https://<domain>/` should answer 502 between sessions.
    - **Elsewhere:** set `LIVE_BROWSER_PUBLIC_URL` to your host's public https URL. If you publish it through a reverse tunnel you already run, also set `LIVE_BROWSER_LISTEN_HOST=127.0.0.1` and point the tunnel at the port.
 3. **Optional settings**, as environment variables or as `KEY=VALUE` lines in `scripts/live_browser.env`. Real environment variables win.
-   - `LIVE_BROWSER_LANG=pt-BR`: Portuguese viewer and messages. The default is `en`.
    - `LIVE_BROWSER_ALLOWED_PORTS=9334,9339`: other dedicated Chromes that may be shared.
    - `LIVE_BROWSER_DENY_PORTS=9333`: Chromes that can never be shared, for example a messaging app.
    - `LIVE_BROWSER_STATE_DIR` and `LIVE_BROWSER_PROFILE_DIR`: defaults under `$HERMES_HOME/live-browser`.
@@ -66,6 +65,7 @@ Flow for a blocked task:
 4. On `done: true`, continue in the same Chrome with your own CDP client on port 9339. browser_exec runs a different browser and cannot see this one.
 
 ## Pitfalls
+- **`/browser` is also a built-in Hermes command, but CLI-only.** In Telegram/Slack the quick command wins, since the built-in is not a gateway command. Pick another name if you use the CLI chat.
 - **Prefer a stable public URL over a throwaway tunnel hostname.** A freshly created random hostname took minutes to resolve in testing, and probing it too early made the resolver cache NXDOMAIN.
 - **Two windows with the same cookie** used to kick each other off every couple of seconds. A new window now takes over, and the old one shows "session opened in another window" and stops reconnecting.
 - **Do not enable `Emulation.setTouchEmulationEnabled`** for the phone layout: it swallowed the viewer's mouse events. Device metrics alone are enough.

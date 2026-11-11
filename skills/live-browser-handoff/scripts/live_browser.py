@@ -22,7 +22,6 @@ LIVE_BROWSER_LISTEN_HOST=127.0.0.1). Nothing listens on the port between session
 
 Settings come from environment variables, optionally from a `live_browser.env` file
 (KEY=VALUE lines) next to this script; real environment variables win:
-  LIVE_BROWSER_LANG           en (default) or pt-BR, for the viewer and messages
   LIVE_BROWSER_STATE_DIR      default $HERMES_HOME/live-browser (or ~/.hermes/live-browser)
   LIVE_BROWSER_PROFILE_DIR    dedicated Chrome profile, default <state dir>/chrome-profile
   LIVE_BROWSER_CDP_PORT       dedicated Chrome DevTools port, default 9339
@@ -69,7 +68,6 @@ def _ports(name, default=""):
     return {int(p) for p in setting(name, default).replace(" ", "").split(",") if p}
 
 
-LANG = "pt-BR" if setting("LIVE_BROWSER_LANG", "en").lower().startswith("pt") else "en"
 STATE_DIR = setting("LIVE_BROWSER_STATE_DIR") or os.path.join(
     setting("HERMES_HOME") or os.path.expanduser("~/.hermes"), "live-browser")
 STATE = os.path.join(STATE_DIR, "state.json")
@@ -87,38 +85,20 @@ TZ_NAME = setting("TZ")
 IDLE_SECONDS = 600
 
 TEXT = {
-    "en": {
-        "title": "Agent's browser", "url": "address", "back": "Back", "reload": "Reload", "tabs": "Tabs",
-        "kb": "Keyboard", "drag": "Drag mode (slider captchas)", "mob": "Phone layout", "done": "✅ Done",
-        "kbd": "type here (Enter sends Enter)", "connecting": "connecting…", "reconnecting": "reconnecting…",
-        "drag_on": "drag mode: your finger holds and drags", "drag_off": "normal mode: tap clicks, swipe scrolls",
-        "newtab": "+ new tab", "confirm": "End the session and hand the browser back to the agent?",
-        "failed": "that failed, try again", "elsewhere": "session opened in another window",
-        "ended": "session ended", "ended_done": "✅ Done! The browser is back with the agent.",
-        "expired": "link expired", "maxtime": "maximum session time reached", "idle": "session ended for inactivity",
-        "bad_link": "Invalid, expired or already used link. Ask the agent for a new one.",
-        "no_session": "No session. Ask the agent for a new link.",
-        "msg": "🖥️ Live browser\n{link}\n\nOpen by {open_by} · works once · ends by {ends_by}.\nWhen finished, tap ✅ Done.",
-        "r_done": "finished by the user", "r_unopened": "link expired unopened", "r_max": "max time",
-        "r_idle": "idle", "r_stopped": "stopped by the agent", "r_replaced": "replaced by a new session",
-    },
-    "pt-BR": {
-        "title": "Navegador do agente", "url": "endereço", "back": "Voltar", "reload": "Recarregar", "tabs": "Abas",
-        "kb": "Teclado", "drag": "Modo arrastar (captcha de deslizar)", "mob": "Layout de celular", "done": "✅ Pronto",
-        "kbd": "digite aqui (Enter envia Enter)", "connecting": "conectando…", "reconnecting": "reconectando…",
-        "drag_on": "modo arrastar: o dedo segura e arrasta", "drag_off": "modo normal: toque clica, deslize rola",
-        "newtab": "+ nova aba", "confirm": "Encerrar e devolver o navegador pro agente?",
-        "failed": "falhou, tente de novo", "elsewhere": "sessão aberta em outra janela",
-        "ended": "sessão encerrada", "ended_done": "✅ Pronto! O navegador voltou pro agente.",
-        "expired": "link expirado", "maxtime": "tempo máximo da sessão atingido",
-        "idle": "sessão encerrada por inatividade",
-        "bad_link": "Link inválido, expirado ou já usado. Peça um novo.",
-        "no_session": "Sem sessão. Peça um link novo.",
-        "msg": "🖥️ Navegador ao vivo\n{link}\n\nAbra até {open_by} · vale um uso só · encerra até {ends_by}.\nNo fim, toque em ✅ Pronto.",
-        "r_done": "concluída pelo usuário", "r_unopened": "link expirou sem ser aberto", "r_max": "tempo máximo",
-        "r_idle": "inativa", "r_stopped": "parada pelo agente", "r_replaced": "substituída por nova sessão",
-    },
-}[LANG]
+    "title": "Agent's browser", "url": "address", "back": "Back", "reload": "Reload", "tabs": "Tabs",
+    "kb": "Keyboard", "drag": "Drag mode (slider captchas)", "mob": "Phone layout", "done": "✅ Done",
+    "kbd": "type here (Enter sends Enter)", "connecting": "connecting…", "reconnecting": "reconnecting…",
+    "drag_on": "drag mode: your finger holds and drags", "drag_off": "normal mode: tap clicks, swipe scrolls",
+    "newtab": "+ new tab", "confirm": "End the session and hand the browser back to the agent?",
+    "failed": "that failed, try again", "elsewhere": "session opened in another window",
+    "ended": "session ended", "ended_done": "✅ Done! The browser is back with the agent.",
+    "expired": "link expired", "maxtime": "maximum session time reached", "idle": "session ended for inactivity",
+    "bad_link": "Invalid, expired or already used link. Ask the agent for a new one.",
+    "no_session": "No session. Ask the agent for a new link.",
+    "msg": "🖥️ Live browser\n{link}\n\nOpen by {open_by} · works once · ends by {ends_by}.\nWhen finished, tap ✅ Done.",
+    "r_done": "finished by the user", "r_unopened": "link expired unopened", "r_max": "max time",
+    "r_idle": "idle", "r_stopped": "stopped by the agent", "r_replaced": "replaced by a new session",
+}
 
 
 # ---------------------------------------------------------------- state helpers
@@ -369,7 +349,7 @@ body{margin:0;background:#0b0b0f;color:#ddd;font:14px system-ui,sans-serif;overf
 <script>
 const T=__TEXT__;
 const $=id=>document.getElementById(id);const img=$('screen'),msg=$('msg');
-document.title=T.title;document.documentElement.lang=__LANG__;$('url').placeholder=T.url;$('kbd').placeholder=T.kbd;$('done').textContent=T.done;
+document.title=T.title;document.documentElement.lang='en';$('url').placeholder=T.url;$('kbd').placeholder=T.kbd;$('done').textContent=T.done;
 [['back','back'],['reload','reload'],['tabsb','tabs'],['kb','kb'],['drag','drag'],['mob','mob']].forEach(([i,k])=>$(i).title=T[k]);
 msg.textContent=T.connecting;
 let ws,meta={deviceWidth:1280,deviceHeight:900,offsetTop:0},drag=false,mobile=false,ended=false;
@@ -480,7 +460,7 @@ def serve():
     logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     st = load_state()
     base = f"http://127.0.0.1:{st['cdp']}"
-    page = PAGE.replace("__TEXT__", json.dumps(TEXT, ensure_ascii=False)).replace("__LANG__", json.dumps(LANG))
+    page = PAGE.replace("__TEXT__", json.dumps(TEXT, ensure_ascii=False))
     app_state = {"client": None, "last_seen": time.time(), "target": None}
 
     def persist(**kw):
