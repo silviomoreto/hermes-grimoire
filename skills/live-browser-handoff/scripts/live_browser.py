@@ -15,12 +15,10 @@ never goes through the chat.
 How it works: Chrome DevTools Protocol screencast (JPEG frames, ~8 fps) out to the viewer,
 Input.dispatchMouseEvent / dispatchKeyEvent / insertText back in. Python 3.9+ and aiohttp.
 
-Transport (how the link reaches the internet), first match wins:
-  1. LIVE_BROWSER_PUBLIC_URL (or RAILWAY_PUBLIC_DOMAIN): listen on LIVE_BROWSER_LISTEN_PORT
-     (default $PORT or 8080), the port your platform routes that domain to. Nothing listens
-     there between sessions.
-  2. otherwise a Cloudflare quick tunnel (`cloudflared` in PATH or LIVE_BROWSER_CLOUDFLARED).
-     No account needed, but the random hostname can take from seconds to minutes to resolve.
+Transport: the server listens on LIVE_BROWSER_LISTEN_PORT (default $PORT or 8080) and the
+link uses LIVE_BROWSER_PUBLIC_URL (or https://$RAILWAY_PUBLIC_DOMAIN on Railway). Point that URL
+at the port: the platform's own public domain, or a reverse tunnel you already run (then set
+LIVE_BROWSER_LISTEN_HOST=127.0.0.1). Nothing listens on the port between sessions.
 
 Settings come from environment variables, optionally from a `live_browser.env` file
 (KEY=VALUE lines) next to this script; real environment variables win:
@@ -32,56 +30,60 @@ Settings come from environment variables, optionally from a `live_browser.env` f
   LIVE_BROWSER_DENY_PORTS     comma list that can never be shared, even if allowed (e.g. a messaging app)
   LIVE_BROWSER_CHROME         Chrome/Chromium binary (auto-detected otherwise)
   LIVE_BROWSER_CHROME_LANG    --lang for the dedicated Chrome, default en-US
-  TZ                          time zone of the times printed in the link message
+  LIVE_BROWSER_LISTEN_HOST    interface to bind, default all (use 127.0.0.1 behind a local tunnel)
+  TZ                          time zone of the times printed in the link message (e.g. Europe/Lisbon)
 
 Security model: the link carries a 32-byte random token that works once and only for
 --open-minutes; opening it swaps the token for an HttpOnly, Secure, SameSite=Strict cookie.
 Sessions end after --minutes, after 10 idle minutes, or when Done is pressed; then the
-server (and tunnel) exit. Keystrokes and tokens are never logged.
+server exits. Keystrokes and tokens are never logged.
 """
-import argparse, asyncio, glob, json, os, re, secrets, shutil, signal, subprocess, sys, time
+import argparse, asyncio, datetime, glob, json, os, re, secrets, shutil, signal, subprocess, sys, time
 import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _load_env_file():
+def _env_file():
     path = os.path.join(HERE, "live_browser.env")
-    if not os.path.exists(path):
-        return
-    for line in open(path):
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    values = {}
+    if os.path.exists(path):
+        for line in open(path):
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                values[k.strip()] = v.strip().strip('"').strip("'")
+    return values
 
 
-_load_env_file()
-if os.environ.get("TZ"):
-    time.tzset()
+_FILE = _env_file()
+
+
+def setting(name, default=""):
+    """Environment variable first, then live_browser.env next to this script, then the default."""
+    return os.environ.get(name) or _FILE.get(name) or default
 
 
 def _ports(name, default=""):
-    return {int(p) for p in os.environ.get(name, default).replace(" ", "").split(",") if p}
+    return {int(p) for p in setting(name, default).replace(" ", "").split(",") if p}
 
 
-LANG = "pt-BR" if os.environ.get("LIVE_BROWSER_LANG", "en").lower().startswith("pt") else "en"
-STATE_DIR = os.environ.get("LIVE_BROWSER_STATE_DIR") or os.path.join(
-    os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes"), "live-browser")
+LANG = "pt-BR" if setting("LIVE_BROWSER_LANG", "en").lower().startswith("pt") else "en"
+STATE_DIR = setting("LIVE_BROWSER_STATE_DIR") or os.path.join(
+    setting("HERMES_HOME") or os.path.expanduser("~/.hermes"), "live-browser")
 STATE = os.path.join(STATE_DIR, "state.json")
 SERVER_LOG = os.path.join(STATE_DIR, "server.log")
-TUNNEL_LOG = os.path.join(STATE_DIR, "tunnel.log")
 CHROME_LOG = os.path.join(STATE_DIR, "chrome.log")
-LIVE_PORT = int(os.environ.get("LIVE_BROWSER_CDP_PORT", "9339"))
-LIVE_PROFILE = os.environ.get("LIVE_BROWSER_PROFILE_DIR") or os.path.join(STATE_DIR, "chrome-profile")
+LIVE_PORT = int(setting("LIVE_BROWSER_CDP_PORT", "9339"))
+LIVE_PROFILE = setting("LIVE_BROWSER_PROFILE_DIR") or os.path.join(STATE_DIR, "chrome-profile")
 ALLOWED_CDP = _ports("LIVE_BROWSER_ALLOWED_PORTS", str(LIVE_PORT)) | {LIVE_PORT}
 FORBIDDEN_CDP = _ports("LIVE_BROWSER_DENY_PORTS")
-_public = os.environ.get("LIVE_BROWSER_PUBLIC_URL") or (
-    f"https://{os.environ['RAILWAY_PUBLIC_DOMAIN']}" if os.environ.get("RAILWAY_PUBLIC_DOMAIN") else "")
-PUBLIC_URL = _public.rstrip("/")
-DIRECT_PORT = int(os.environ.get("LIVE_BROWSER_LISTEN_PORT") or os.environ.get("PORT") or "8080")
-TUNNEL_PORT = 8790  # cloudflare mode: local only, published by the tunnel
+_railway = setting("RAILWAY_PUBLIC_DOMAIN")
+PUBLIC_URL = (setting("LIVE_BROWSER_PUBLIC_URL") or (f"https://{_railway}" if _railway else "")).rstrip("/")
+LISTEN_PORT = int(setting("LIVE_BROWSER_LISTEN_PORT") or setting("PORT") or "8080")
+LISTEN_HOST = setting("LIVE_BROWSER_LISTEN_HOST") or None  # None = every interface, IPv4 and IPv6
+TZ_NAME = setting("TZ")
 IDLE_SECONDS = 600
 
 TEXT = {
@@ -99,24 +101,22 @@ TEXT = {
         "msg": "🖥️ Live browser\n{link}\n\nOpen by {open_by} · works once · ends by {ends_by}.\nWhen finished, tap ✅ Done.",
         "r_done": "finished by the user", "r_unopened": "link expired unopened", "r_max": "max time",
         "r_idle": "idle", "r_stopped": "stopped by the agent", "r_replaced": "replaced by a new session",
-        "r_tunnel": "tunnel did not start",
     },
     "pt-BR": {
-        "title": "Navegador do agente", "url": "endere\u00e7o", "back": "Voltar", "reload": "Recarregar", "tabs": "Abas",
+        "title": "Navegador do agente", "url": "endereço", "back": "Voltar", "reload": "Recarregar", "tabs": "Abas",
         "kb": "Teclado", "drag": "Modo arrastar (captcha de deslizar)", "mob": "Layout de celular", "done": "✅ Pronto",
         "kbd": "digite aqui (Enter envia Enter)", "connecting": "conectando…", "reconnecting": "reconectando…",
         "drag_on": "modo arrastar: o dedo segura e arrasta", "drag_off": "modo normal: toque clica, deslize rola",
         "newtab": "+ nova aba", "confirm": "Encerrar e devolver o navegador pro agente?",
-        "failed": "falhou, tente de novo", "elsewhere": "sess\u00e3o aberta em outra janela",
-        "ended": "sess\u00e3o encerrada", "ended_done": "✅ Pronto! O navegador voltou pro agente.",
-        "expired": "link expirado", "maxtime": "tempo m\u00e1ximo da sess\u00e3o atingido",
-        "idle": "sess\u00e3o encerrada por inatividade",
-        "bad_link": "Link inv\u00e1lido, expirado ou j\u00e1 usado. Pe\u00e7a um novo.",
-        "no_session": "Sem sess\u00e3o. Pe\u00e7a um link novo.",
-        "msg": "🖥️ Navegador ao vivo\n{link}\n\nAbra at\u00e9 {open_by} · vale um uso s\u00f3 · encerra at\u00e9 {ends_by}.\nNo fim, toque em ✅ Pronto.",
-        "r_done": "conclu\u00edda pelo usu\u00e1rio", "r_unopened": "link expirou sem ser aberto", "r_max": "tempo m\u00e1ximo",
-        "r_idle": "inativa", "r_stopped": "parada pelo agente", "r_replaced": "substitu\u00edda por nova sess\u00e3o",
-        "r_tunnel": "t\u00fanel n\u00e3o subiu",
+        "failed": "falhou, tente de novo", "elsewhere": "sessão aberta em outra janela",
+        "ended": "sessão encerrada", "ended_done": "✅ Pronto! O navegador voltou pro agente.",
+        "expired": "link expirado", "maxtime": "tempo máximo da sessão atingido",
+        "idle": "sessão encerrada por inatividade",
+        "bad_link": "Link inválido, expirado ou já usado. Peça um novo.",
+        "no_session": "Sem sessão. Peça um link novo.",
+        "msg": "🖥️ Navegador ao vivo\n{link}\n\nAbra até {open_by} · vale um uso só · encerra até {ends_by}.\nNo fim, toque em ✅ Pronto.",
+        "r_done": "concluída pelo usuário", "r_unopened": "link expirou sem ser aberto", "r_max": "tempo máximo",
+        "r_idle": "inativa", "r_stopped": "parada pelo agente", "r_replaced": "substituída por nova sessão",
     },
 }[LANG]
 
@@ -169,13 +169,19 @@ def cdp_up(port):
 
 
 def hhmm(ts):
+    if TZ_NAME:
+        try:
+            from zoneinfo import ZoneInfo
+            return datetime.datetime.fromtimestamp(ts, ZoneInfo(TZ_NAME)).strftime("%H:%M")
+        except Exception:
+            pass
     return time.strftime("%H:%M", time.localtime(ts))
 
 
 # ---------------------------------------------------------------- chrome
 def find_chrome():
-    if os.environ.get("LIVE_BROWSER_CHROME"):
-        return os.environ["LIVE_BROWSER_CHROME"]
+    if setting("LIVE_BROWSER_CHROME"):
+        return setting("LIVE_BROWSER_CHROME")
     found = sorted(glob.glob("/opt/hermes/tools/chromium-*/chrome-linux64/chrome")) + sorted(
         glob.glob(os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome")))
     if found:
@@ -207,7 +213,7 @@ def ensure_live_chrome():
         [chrome, "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run",
          "--no-default-browser-check", "--disable-background-networking",
          "--remote-debugging-address=127.0.0.1", f"--remote-debugging-port={LIVE_PORT}",
-         f"--user-data-dir={LIVE_PROFILE}", f"--lang={os.environ.get('LIVE_BROWSER_CHROME_LANG', 'en-US')}",
+         f"--user-data-dir={LIVE_PROFILE}", f"--lang={setting('LIVE_BROWSER_CHROME_LANG', 'en-US')}",
          "--window-size=1280,900", f"--user-agent={ua}", "about:blank"],
         stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
     for _ in range(40):
@@ -238,7 +244,6 @@ def navigate_first_page(port, url):
 # ---------------------------------------------------------------- commands
 def cmd_stop(args, reason=None, quiet=False):
     st = load_state()
-    kill(st.get("tunnel_pid"))
     kill(st.get("server_pid"))
     reason = reason or TEXT["r_stopped"]
     if st and not st.get("ended_at"):
@@ -278,10 +283,8 @@ def cmd_start(args):
         sys.exit(f"port {port} is on LIVE_BROWSER_DENY_PORTS and can never be shared")
     if port not in ALLOWED_CDP:
         sys.exit(f"port {port} is not in LIVE_BROWSER_ALLOWED_PORTS {sorted(ALLOWED_CDP)}")
-    mode = "direct" if PUBLIC_URL else "cloudflare"
-    cloudflared = os.environ.get("LIVE_BROWSER_CLOUDFLARED") or shutil.which("cloudflared") or os.path.join(HERE, "bin", "cloudflared")
-    if mode == "cloudflare" and not os.access(cloudflared, os.X_OK):
-        sys.exit("no LIVE_BROWSER_PUBLIC_URL and no cloudflared binary: set one of them (see --help)")
+    if not PUBLIC_URL:
+        sys.exit("set LIVE_BROWSER_PUBLIC_URL (the https URL that reaches LIVE_BROWSER_LISTEN_PORT); see --help")
     cmd_stop(argparse.Namespace(chrome=False), reason=TEXT["r_replaced"], quiet=True)
     if port == LIVE_PORT:
         ensure_live_chrome()
@@ -294,7 +297,7 @@ def cmd_start(args):
     st = {"cdp": port, "token": secrets.token_urlsafe(32), "sid": None, "claimed": False, "done": False,
           "created_at": now, "open_deadline": now + args.open_minutes * 60,
           "hard_deadline": now + args.minutes * 60, "ended_at": None, "reason": None, "last_url": args.url,
-          "mode": mode, "listen_port": DIRECT_PORT if mode == "direct" else TUNNEL_PORT}
+          "listen_port": LISTEN_PORT}
     token = st["token"]
     save_state(st)
 
@@ -312,25 +315,10 @@ def cmd_start(args):
         kill(srv.pid)
         sys.exit("server did not start; see " + SERVER_LOG)
 
-    tun_pid, host = None, PUBLIC_URL or None
-    if mode == "cloudflare":
-        open(TUNNEL_LOG, "w").close()
-        tun = subprocess.Popen([cloudflared, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{TUNNEL_PORT}"],
-                               stdout=open(TUNNEL_LOG, "ab"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                               start_new_session=True)
-        tun_pid = tun.pid
-        for _ in range(60):
-            time.sleep(0.5)
-            m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", open(TUNNEL_LOG).read())
-            if m:
-                host = m.group(0)
-                break
+    host = PUBLIC_URL
     st = load_state()
-    st.update(server_pid=srv.pid, tunnel_pid=tun_pid, host=host)
+    st.update(server_pid=srv.pid, host=host)
     save_state(st)
-    if not host:
-        cmd_stop(argparse.Namespace(chrome=False), reason=TEXT["r_tunnel"], quiet=True)
-        sys.exit("tunnel did not start; see " + TUNNEL_LOG)
     ready = False
     for _ in range(args.probe):
         try:
@@ -344,7 +332,7 @@ def cmd_start(args):
     link = f"{host}/s/{token}"
     if args.json:
         print(json.dumps({"link": link, "ready": ready, "open_by": hhmm(st["open_deadline"]),
-                          "ends_by": hhmm(st["hard_deadline"]), "cdp": port, "mode": mode}))
+                          "ends_by": hhmm(st["hard_deadline"]), "cdp": port}))
     else:
         print(TEXT["msg"].format(link=link, open_by=hhmm(st["open_deadline"]), ends_by=hhmm(st["hard_deadline"])))
 
@@ -509,7 +497,6 @@ def serve():
                 await c.close()
             except Exception:
                 pass
-        kill(load_state().get("tunnel_pid"))
         await asyncio.sleep(0.3)
         os._exit(0)
 
@@ -749,10 +736,7 @@ def serve():
         asyncio.ensure_future(watchdog())
     app.on_startup.append(on_startup)
     persist(server_pid=os.getpid())
-    if st.get("mode") == "direct":
-        web.run_app(app, host=None, port=st["listen_port"], access_log=None, print=None)  # all interfaces, v4 + v6
-    else:
-        web.run_app(app, host="127.0.0.1", port=st["listen_port"], access_log=None, print=None)
+    web.run_app(app, host=LISTEN_HOST, port=st["listen_port"], access_log=None, print=None)
 
 
 def main():

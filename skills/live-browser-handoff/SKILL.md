@@ -28,16 +28,14 @@ Your agent hits a captcha, an SMS or app 2FA prompt, or a password it must not k
 - Security:
   - the link carries a 32-byte random token that works **once** and only for 10 minutes;
   - opening it swaps the token for an HttpOnly, Secure, SameSite=Strict cookie;
-  - a session lasts at most 30 minutes and ends after 10 idle minutes; then the server and tunnel exit;
+  - a session lasts at most 30 minutes and ends after 10 idle minutes; then the server exits;
   - keystrokes and tokens are never logged.
 
 ## Setup
 1. **Python with aiohttp and a Chrome/Chromium.** The Hermes venv already has aiohttp and Hermes ships a Chromium. The script finds it under `/opt/hermes/tools/chromium-*`, in the Playwright cache or on `PATH`. Otherwise set `LIVE_BROWSER_CHROME`.
-2. **A way to reach it from the internet** (pick one):
-   - **Public URL of your host (recommended).** On Railway the script uses `RAILWAY_PUBLIC_DOMAIN` automatically and listens on `$PORT` or 8080.
-     - That port must be the one your domain routes to, and nothing else may listen on it. Check first: `curl -s https://<domain>/` should answer 502.
-     - Elsewhere, set `LIVE_BROWSER_PUBLIC_URL` and `LIVE_BROWSER_LISTEN_PORT`.
-   - **Cloudflare quick tunnel.** Put `cloudflared` on `PATH` or set `LIVE_BROWSER_CLOUDFLARED`. No account is needed. The random `*.trycloudflare.com` name can take from seconds to several minutes to resolve.
+2. **An https URL that reaches the viewer port.** The script listens on `LIVE_BROWSER_LISTEN_PORT` (default `$PORT` or 8080) and builds the link from `LIVE_BROWSER_PUBLIC_URL`.
+   - **Railway:** nothing to set. It uses `RAILWAY_PUBLIC_DOMAIN` and `$PORT`/8080, the port the service domain routes to. Check first that nothing else listens there: `curl -s https://<domain>/` should answer 502 between sessions.
+   - **Elsewhere:** set `LIVE_BROWSER_PUBLIC_URL` to your host's public https URL. If you publish it through a reverse tunnel you already run, also set `LIVE_BROWSER_LISTEN_HOST=127.0.0.1` and point the tunnel at the port.
 3. **Optional settings**, as environment variables or as `KEY=VALUE` lines in `scripts/live_browser.env`. Real environment variables win.
    - `LIVE_BROWSER_LANG=pt-BR`: Portuguese viewer and messages. The default is `en`.
    - `LIVE_BROWSER_ALLOWED_PORTS=9334,9339`: other dedicated Chromes that may be shared.
@@ -68,7 +66,7 @@ Flow for a blocked task:
 4. On `done: true`, continue in the same Chrome with your own CDP client on port 9339. browser_exec runs a different browser and cannot see this one.
 
 ## Pitfalls
-- **Probing a fresh quick-tunnel name too early** can make your resolver cache NXDOMAIN for a while. Prefer the host's public URL.
+- **Prefer a stable public URL over a throwaway tunnel hostname.** A freshly created random hostname took minutes to resolve in testing, and probing it too early made the resolver cache NXDOMAIN.
 - **Two windows with the same cookie** used to kick each other off every couple of seconds. A new window now takes over, and the old one shows "session opened in another window" and stops reconnecting.
 - **Do not enable `Emulation.setTouchEmulationEnabled`** for the phone layout: it swallowed the viewer's mouse events. Device metrics alone are enough.
 - **The default headless user agent** (`HeadlessChrome`) is flagged by many login pages. The script launches Chrome with a regular desktop user agent for its own version.
