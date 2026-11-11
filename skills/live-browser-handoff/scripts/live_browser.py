@@ -97,6 +97,10 @@ TEXT = {
     "bad_link": "Invalid, expired or already used link. Ask the agent for a new one.",
     "no_session": "No session. Ask the agent for a new link.",
     "open": "Open the live browser", "open_hint": "Tap to take control. This link works once.",
+    "copy": "Copy", "paste": "Paste", "copied": "copied to your clipboard",
+    "nothing_selected": "nothing selected: drag over the text in ✋ mode, or Ctrl+A in a field",
+    "copy_manual": "long-press the text below and choose Copy", "paste_manual": "long-press this field and choose Paste",
+    "close": "Close",
     "msg": "🖥️ Live browser\n{link}\n\nOpen by {open_by} · works once · ends by {ends_by}.\nWhen finished, tap ✅ Done.",
     "r_done": "finished by the user", "r_unopened": "link expired unopened", "r_max": "max time",
     "r_idle": "idle", "r_stopped": "stopped by the agent", "r_replaced": "replaced by a new session",
@@ -337,22 +341,27 @@ body{margin:0;background:#0b0b0f;color:#ddd;font:14px system-ui,sans-serif;overf
 #msg{position:fixed;bottom:84px;left:8px;right:8px;text-align:center;color:#bbb;font-size:12px;pointer-events:none}
 #tabs{position:fixed;top:48px;left:6px;right:6px;background:#141419;border:1px solid #333;border-radius:8px;display:none;max-height:60vh;overflow:auto;z-index:5}
 #tabs div{padding:10px;border-bottom:1px solid #222}
+#clip{position:fixed;left:8px;right:8px;top:30%;z-index:20;background:#141419;border:1px solid #4b2a6b;border-radius:10px;padding:10px;display:none}
+#clip textarea{width:100%;box-sizing:border-box;height:120px;background:#0b0b0f;color:#eee;border:1px solid #333;border-radius:6px;font-size:16px}
+#clip p{margin:0 0 6px;color:#bbb;font-size:13px}
 #done{position:fixed;right:14px;bottom:18px;z-index:10;background:#1e7a4a;color:#fff;border:0;border-radius:28px;padding:14px 22px;font-size:18px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.6)}
 </style></head><body>
 <div id="bar">
 <button id="back">←</button><button id="reload">⟳</button>
 <input id="url" autocapitalize="off" autocorrect="off" spellcheck="false">
 <button id="tabsb">▤</button><button id="kb">⌨️</button><button id="drag">✋</button><button id="mob">📱</button>
+<button id="copyb"></button><button id="pasteb"></button>
 <input id="kbd" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
 </div>
 <div id="tabs"></div>
 <div id="wrap"><img id="screen" draggable="false" alt=""></div>
 <div id="msg"></div>
+<div id="clip"><p id="cliphint"></p><textarea id="cliptext" readonly></textarea><button id="clipclose"></button></div>
 <button id="done"></button>
 <script>
 const T=__TEXT__;
 const $=id=>document.getElementById(id);const img=$('screen'),msg=$('msg');
-document.title=T.title;document.documentElement.lang='en';$('url').placeholder=T.url;$('kbd').placeholder=T.kbd;$('done').textContent=T.done;
+document.title=T.title;document.documentElement.lang='en';$('url').placeholder=T.url;$('kbd').placeholder=T.kbd;$('done').textContent=T.done;$('copyb').textContent=T.copy;$('pasteb').textContent=T.paste;$('clipclose').textContent=T.close;
 [['back','back'],['reload','reload'],['tabsb','tabs'],['kb','kb'],['drag','drag'],['mob','mob']].forEach(([i,k])=>$(i).title=T[k]);
 msg.textContent=T.connecting;
 let ws,meta={deviceWidth:1280,deviceHeight:900,offsetTop:0},drag=false,mobile=false,ended=false;
@@ -364,6 +373,7 @@ function connect(){
   if(d.type==='frame'){img.src='data:image/jpeg;base64,'+d.data;if(d.meta)meta=d.meta}
   else if(d.type==='url'){if(document.activeElement!==$('url'))$('url').value=d.url||''}
   else if(d.type==='tabs'){const t=$('tabs');t.innerHTML='';d.tabs.forEach(x=>{const r=document.createElement('div');r.textContent=(x.active?'● ':'')+(x.title||x.url);r.onclick=()=>{send({type:'switch',id:x.id});t.style.display='none'};t.appendChild(r)});const n=document.createElement('div');n.textContent=T.newtab;n.onclick=()=>{send({type:'newtab'});t.style.display='none'};t.appendChild(n);t.style.display='block'}
+  else if(d.type==='clip'){gotClip(d.text||'')}
   else if(d.type==='end'){ended=true;msg.textContent=d.text||T.ended;ws.close()}
   else if(d.type==='info'){msg.textContent=d.text;setTimeout(()=>{if(msg.textContent===d.text)msg.textContent=''},3000)}};
  ws.onclose=()=>{if(!ended){msg.textContent=T.reconnecting;setTimeout(connect,1500)}};
@@ -384,10 +394,13 @@ img.addEventListener('pointerup',e=>{const p=pos(e);if(!down)return;
 img.addEventListener('contextmenu',e=>e.preventDefault());
 img.addEventListener('wheel',e=>{e.preventDefault();const p=pos(e);send({type:'wheel',x:p.x,y:p.y,dx:e.deltaX,dy:e.deltaY})},{passive:false});
 const SPECIAL=new Set(['Enter','Backspace','Tab','Escape','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Delete','Home','End','PageUp','PageDown']);
-document.addEventListener('keydown',e=>{const a=document.activeElement;if(a===$('url')||a===$('kbd'))return;
+document.addEventListener('keydown',e=>{const a=document.activeElement;if(a===$('url')||a===$('kbd')||a===$('cliptext'))return;
+ const k=(e.key||'').toLowerCase();
+ if((e.ctrlKey||e.metaKey)&&k==='v')return;
+ if((e.ctrlKey||e.metaKey)&&(k==='c'||k==='x')){e.preventDefault();send({type:'copy',cut:k==='x'});return}
  if(SPECIAL.has(e.key)||e.ctrlKey||e.metaKey||e.altKey){e.preventDefault();send({type:'key',key:e.key,mod:mods(e)})}
  else if(e.key.length===1){e.preventDefault();send({type:'text',text:e.key})}});
-document.addEventListener('paste',e=>{const a=document.activeElement;if(a===$('url')||a===$('kbd'))return;const t=e.clipboardData.getData('text');if(t){e.preventDefault();send({type:'text',text:t})}});
+document.addEventListener('paste',e=>{const a=document.activeElement;if(a===$('url')||a===$('kbd')||a===$('cliptext'))return;const t=e.clipboardData.getData('text');if(t){e.preventDefault();send({type:'text',text:t})}});
 const kbd=$('kbd');
 kbd.addEventListener('input',e=>{if(e.inputType&&e.inputType.startsWith('delete')){send({type:'key',key:'Backspace'})}else if(kbd.value){send({type:'text',text:kbd.value})}kbd.value=''});
 kbd.addEventListener('keydown',e=>{if(SPECIAL.has(e.key)&&e.key!=='Backspace'){e.preventDefault();send({type:'key',key:e.key})}else if(e.key==='Backspace'&&!kbd.value){e.preventDefault();send({type:'key',key:'Backspace'})}});
@@ -398,6 +411,14 @@ $('back').onclick=()=>send({type:'back'});$('reload').onclick=()=>send({type:'re
 $('tabsb').onclick=()=>{const t=$('tabs');if(t.style.display==='block')t.style.display='none';else send({type:'tabs'})};
 $('url').addEventListener('keydown',e=>{if(e.key==='Enter'){send({type:'navigate',url:$('url').value});$('url').blur()}});
 $('done').onclick=()=>{if(confirm(T.confirm))send({type:'done'})};
+function info(t){msg.textContent=t;setTimeout(()=>{if(msg.textContent===t)msg.textContent=''},3500)}
+function showClip(hint,text,editable){const c=$('clip'),ta=$('cliptext');$('cliphint').textContent=hint;ta.readOnly=!editable;ta.value=text;c.style.display='block';ta.focus();if(!editable)ta.select()}
+$('clipclose').onclick=()=>{$('clip').style.display='none'};
+function gotClip(t){if(!t){info(T.nothing_selected);return}
+ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(()=>info(T.copied),()=>showClip(T.copy_manual,t,false))}else showClip(T.copy_manual,t,false)}
+$('copyb').onclick=()=>send({type:'copy'});
+$('pasteb').onclick=()=>{const manual=()=>{kbd.style.display='block';$('kb').classList.add('on');kbd.focus();info(T.paste_manual)};
+ if(navigator.clipboard&&navigator.clipboard.readText){navigator.clipboard.readText().then(t=>{if(t)send({type:'text',text:t});else manual()},manual)}else manual()};
 </script></body></html>"""
 
 KEYS = {
@@ -602,7 +623,7 @@ def serve():
                 wake.set()
             elif method == "Page.frameNavigated" and not p.get("frame", {}).get("parentId"):
                 url = p["frame"].get("url")
-                persist(last_url=url)
+                persist(last_url=(url or "").split("?")[0].split("#")[0])
                 push({"type": "url", "url": url})
 
         async def detach():
@@ -699,6 +720,17 @@ def serve():
                                 url = ("https://" + url) if "." in url and " " not in url else \
                                     "https://www.google.com/search?q=" + urllib.parse.quote(url)
                             await cdp.call("Page.navigate", url=url)
+                    elif t == "copy":
+                        # selected text of the page, or of the focused field; never from a password field
+                        r = await cdp.call("Runtime.evaluate", returnByValue=True, expression=(
+                            "(() => {const a=document.activeElement;let t='';"
+                            "if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&a.type!=='password'"
+                            "&&a.selectionStart!==a.selectionEnd)t=a.value.substring(a.selectionStart,a.selectionEnd);"
+                            "if(!t&&!(a&&a.type==='password'))t=String(window.getSelection()||'');return t})()"))
+                        text = (r.get("result") or {}).get("value") or ""
+                        push({"type": "clip", "text": text[:100000]})
+                        if d.get("cut") and text:
+                            await press("Backspace")
                     elif t == "back":
                         await cdp.call("Runtime.evaluate", expression="history.back()")
                     elif t == "reload":

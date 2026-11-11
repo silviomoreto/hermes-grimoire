@@ -22,6 +22,8 @@ Your agent hits a captcha, an SMS or app 2FA prompt, or a password it must not k
 - Viewer controls:
   - ← back, ⟳ reload, address bar, ▤ tabs;
   - ⌨️ opens a field that brings up the phone keyboard and accepts paste from a password manager;
+  - **Copy** sends the text selected on the page (or in the focused field) to your clipboard; if the phone blocks that, it shows the text for a long-press copy. Password fields are never copied. Ctrl/Cmd+C and Ctrl/Cmd+X work on a computer;
+  - **Paste** types your clipboard into the page (the phone may ask permission); if it is blocked, it opens the ⌨️ field for a long-press paste. Ctrl/Cmd+V works on a computer;
   - ✋ drag mode for slider captchas (by default a tap clicks and a swipe scrolls);
   - 📱 phone layout;
   - ✅ Done, a big floating button at the bottom right, ends the session.
