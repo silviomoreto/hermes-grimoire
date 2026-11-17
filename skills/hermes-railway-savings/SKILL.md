@@ -18,11 +18,17 @@ Railway prices, roughly ([pricing](https://railway.com/pricing)):
 - **Container RAM:** `cat /sys/fs/cgroup/memory.current` and `grep -E '^(anon|file) ' /sys/fs/cgroup/memory.stat`.
 - **Per process:** `ps -eo rss,args --sort=-rss | head`.
 - **Disk:** `df -h /data` and `du -xsh /data/* /data/.hermes/* | sort -rh | head`, then drill into the biggest ones.
+- **Processes and threads:** `cat /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max`. The limit covers the whole container, i.e. every profile together. When it is full, every bot fails at once with "can't start new thread" or "Message delivery failed", with no memory error.
+  - Each Chrome costs ~110–330 threads and the gateway ~135.
+  - To find the culprit, run `ps -eo pid,nlwp,etimes,args --sort=-nlwp | head` and add up the threads of each Chrome's children. The typical culprit is a Chrome from another profile left open for days. Kill it by pid: the login stays in the profile.
+- **The real RAM number is `anon`.** `file` (page cache) can reach 10 GB after downloads and PDFs. The kernel reuses it, and you can't free it without root (`memory.reclaim` and `drop_caches` are root-only).
 - **Routine noise:** for each job, count the outputs from the last 3 days in `cron/output/<id>/` whose Response section is not `[SILENT]`.
 - **Leave a logger running.** `scripts/mem_watch.sh` (below) writes RAM and the top consumers to `logs/mem_watch.log` every 15 min. Without that history you can't prove a change worked.
 
 ## 2. RAM
 - **A dedicated Chrome** (WhatsApp Web, logged-in sites) eats 1.5–2 GB while open. Close it after 30 min and reopen it on demand. The login survives because it lives in the profile on disk (a fixed `--user-data-dir` on the volume). `mem_watch.sh` does this.
+- **A Chrome handed over to the user** (the `live-browser-handoff` spell) kept ~1.6 GB for hours after the session ended. `mem_watch.sh` closes it 60 min after the last session change, unless a session is `active`/`waiting` or a long job touched a `KEEP` file in the state dir in the last 3 h. Closing it is not a logout: the logins stay in the profile.
+- **A watcher that opens WhatsApp Web every few minutes keeps its Chrome (~2 GB) open all day.** `mem_watch.sh` closes it at 30 min and the next run reopens it. Once the conversation moves to e-mail or is just waiting, lower the cadence (`hermes cron edit <id> --schedule "every 30m"`) or turn the watcher off. Measured: `anon` went from 2.1 GB to 0.7 GB after closing an idle handoff Chrome and an idle WhatsApp Chrome.
 - **Orphan `browser_harness.daemon` processes** (~40 MB each) stay alive after their browser closes. `mem_watch.sh` kills the ones older than 30 min whose CDP port (`BU_CDP_WS` in the process environ) no longer answers. The first cleanup found 11 of them (~400 MB).
 - **The gateway grows** from ~0.4 GB at boot to ~1.7 GB after 5 days, even with `agent_cache.memory_high_mb` set. This is Python malloc fragmentation.
   - Under test: set the Railway Variable `MALLOC_ARENA_MAX=2` and redeploy.
@@ -56,7 +62,7 @@ Railway prices, roughly ([pricing](https://railway.com/pricing)):
   - Each run costs milliseconds of CPU and zero tokens.
   - Good for: WhatsApp reply watchers, an SSH alarm, post-deploy checks, cleanups.
 - **Monitor mode:** the script prints one stable line only when something changes (e.g. a meeting entering the 20–50 min window), so the AI only wakes up then.
-- **`[SILENT]` by default.** A routine that talks to the user only writes when it has something concrete. Merge a profile's daily routines into ONE daily message.
+- **`[SILENT]` by default.** A routine that talks to the user only writes when the user must act or decide. A report of what the agent already solved on its own ("posted it", "set up the watcher", "fixed the tool") does not count, above all in a mailbox between profiles, where the other agent already tells the user and the message arrives twice. Merge a profile's daily routines into ONE daily message.
 - **Remove one-shot jobs that already ran** (`state: completed`). They only clutter the list. Run `hermes [-p profile] cron remove <id>`; the output stays in `cron/output`.
 - **Pick the model by routine type:**
   - Plain reminder: Haiku.
@@ -72,6 +78,6 @@ Railway prices, roughly ([pricing](https://railway.com/pricing)):
 - **`pkill -f <pattern>`** in the agent's terminal can kill its own shell. Use `pgrep` + `kill <pid>`.
 
 ## Scripts
-- **`scripts/mem_watch.sh`:** RAM logger, closes idle dedicated Chromes and kills orphan browser daemons. Cron: `hermes cron create "every 15m" --script mem_watch.sh --no-agent`.
+- **`scripts/mem_watch.sh`:** RAM and process logger, closes idle dedicated Chromes and an idle handoff Chrome, kills orphan browser daemons. Cron: `hermes cron create "every 15m" --script mem_watch.sh --no-agent`.
 - **`scripts/clean_scratch.sh`:** daily scratch cleanup with a git backup. Cron: `hermes cron create "0 4 * * *" --script clean_scratch.sh --no-agent`.
 - **Setup:** copy them to `<HERMES_HOME>/scripts/` (or `profiles/<profile>/scripts/`) and adjust the variables at the top.
