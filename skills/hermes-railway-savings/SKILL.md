@@ -53,6 +53,10 @@ Railway prices, roughly ([pricing](https://railway.com/pricing)):
 - **Caches:**
   - `UV_CACHE_DIR=/data/.hermes/cache/uv /opt/hermes/tools/uv-*/uv cache prune` freed 1.2 GB.
   - Delete `~/.cache/pip` of each profile.
+- **npm per profile home** (`<home>/.npm`): `npm cache clean --force` only clears `_cacache`. The `_npx` folder (temporary installs of `npx wrangler` and friends) keeps growing: delete its folders older than 7 days, npx refetches on demand. Freed 3.3 GB on one profile.
+- **Hugging Face models** (`<home>/.cache/huggingface/hub`): keep only the model the profile's skills actually use. With shared blobs, weights live in `hub/blobs/<2 chars>/<sha>` and each has a `.refs` naming its model: delete `models--X` AND the shards whose `.refs` point to it, then check the kept `model.bin` still resolves (`ls -laL`). Unused speech-to-text models were 3.1 GB.
+- **Chrome profile caches**, only with that Chrome closed: `Cache`, `Code Cache`, `GPUCache`, `Dawn*Cache`, `GrShaderCache`, `ShaderCache`. Logins (Cookies, IndexedDB, Local Storage) survive. 3.3 GB → 1.25 GB.
+- **Make it automatic:** `scripts/disk_sweep.sh` does the uv, pip, npm/_npx and closed-Chrome cache steps. Schedule it weekly as a no-AI cron (`script: disk_sweep.sh`, `no_agent: true`); it prints nothing unless the volume is still above `DISK_WARN_PCT` (default 70). Model caches and media stay manual: they need judgment.
 - **Raw media already published** (edited video, audio) can go once its owner confirms.
 - **Result:** the volume went from 47% to 28% in one afternoon.
 
@@ -79,5 +83,6 @@ Railway prices, roughly ([pricing](https://railway.com/pricing)):
 
 ## Scripts
 - **`scripts/mem_watch.sh`:** RAM and process logger, closes idle dedicated Chromes and an idle handoff Chrome, kills orphan browser daemons. Cron: `hermes cron create "every 15m" --script mem_watch.sh --no-agent`.
+- **`scripts/disk_sweep.sh`:** weekly cache sweep (uv, pip, npm/_npx, caches of closed Chromes), quiet unless the disk stays high. Cron: `hermes cron create "30 4 * * 0" --script disk_sweep.sh --no-agent`.
 - **`scripts/clean_scratch.sh`:** daily scratch cleanup with a git backup. Cron: `hermes cron create "0 4 * * *" --script clean_scratch.sh --no-agent`.
 - **Setup:** copy them to `<HERMES_HOME>/scripts/` (or `profiles/<profile>/scripts/`) and adjust the variables at the top.
